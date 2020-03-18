@@ -20,6 +20,7 @@ import com.sequenceiq.datalake.service.sdx.EnvironmentService;
 import com.sequenceiq.datalake.service.sdx.status.SdxStatusService;
 import com.sequenceiq.environment.api.v1.environment.model.response.DetailedEnvironmentResponse;
 import com.sequenceiq.flow.reactor.api.handler.ExceptionCatcherEventHandler;
+import com.sequenceiq.redbeams.api.endpoint.v4.databaseserver.responses.DatabaseServerStatusV4Response;
 
 @Component
 public class EnvWaitHandler extends ExceptionCatcherEventHandler<EnvWaitRequest> {
@@ -47,11 +48,12 @@ public class EnvWaitHandler extends ExceptionCatcherEventHandler<EnvWaitRequest>
         EnvWaitRequest envWaitRequest = event.getData();
         Long datalakeId = envWaitRequest.getResourceId();
         String userId = envWaitRequest.getUserId();
+        DatabaseServerStatusV4Response db = envWaitRequest.getDatabaseServerResponse();
         Selectable response;
         try {
             LOGGER.debug("start polling env for sdx: {}", datalakeId);
             DetailedEnvironmentResponse detailedEnvironmentResponse = environmentService.waitAndGetEnvironment(datalakeId);
-            response = new EnvWaitSuccessEvent(datalakeId, userId, detailedEnvironmentResponse);
+            response = new EnvWaitSuccessEvent(datalakeId, userId, detailedEnvironmentResponse, db);
             setEnvCreatedStatus(datalakeId);
         } catch (UserBreakException userBreakException) {
             LOGGER.info("Env polling exited before timeout. Cause: ", userBreakException);
