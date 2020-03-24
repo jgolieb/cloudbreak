@@ -71,6 +71,7 @@ import com.sequenceiq.environment.network.service.SubnetIdProvider;
 import com.sequenceiq.environment.parameters.dto.AwsParametersDto;
 import com.sequenceiq.environment.parameters.dto.ParametersDto;
 import com.sequenceiq.environment.telemetry.service.AccountTelemetryService;
+import com.sequenceiq.environment.proxy.v1.converter.ProxyConfigToProxyResponseConverter;
 
 @Component
 public class EnvironmentApiConverter {
@@ -102,6 +103,8 @@ public class EnvironmentApiConverter {
 
     private final FreeIpaConverter freeIpaConverter;
 
+    private final ProxyConfigToProxyResponseConverter proxyConfigToProxyResponseConverter;
+
     public EnvironmentApiConverter(RegionConverter regionConverter,
             CredentialToCredentialV1ResponseConverter credentialConverter,
             CredentialViewConverter credentialViewConverter,
@@ -110,7 +113,8 @@ public class EnvironmentApiConverter {
             AccountTelemetryService accountTelemetryService,
             CredentialService credentialService,
             SubnetIdProvider subnetIdProvider,
-            FreeIpaConverter freeIpaConverter) {
+            FreeIpaConverter freeIpaConverter,
+            ProxyConfigToProxyResponseConverter proxyConfigToProxyResponseConverter) {
         this.regionConverter = regionConverter;
         this.credentialConverter = credentialConverter;
         this.credentialViewConverter = credentialViewConverter;
@@ -120,6 +124,7 @@ public class EnvironmentApiConverter {
         this.credentialService = credentialService;
         this.subnetIdProvider = subnetIdProvider;
         this.freeIpaConverter = freeIpaConverter;
+        this.proxyConfigToProxyResponseConverter = proxyConfigToProxyResponseConverter;
     }
 
     public EnvironmentCreationDto initCreationDto(EnvironmentRequest request) {
@@ -147,7 +152,8 @@ public class EnvironmentApiConverter {
                         .withTunnel(tunnelConverter.convert(request.getTunnel()))
                         .build())
                 .withParameters(getIfNotNull(request.getAws(), this::awsParamsToParametersDto))
-                .withParentEnvironmentName(request.getParentEnvironmentName());
+                .withParentEnvironmentName(request.getParentEnvironmentName())
+                .withProxyConfigName(request.getProxyConfigName());
 
         NullUtil.doIfNotNull(request.getNetwork(), network -> builder.withNetwork(networkRequestToDto(network)));
         NullUtil.doIfNotNull(request.getSecurityAccess(), securityAccess -> builder.withSecurityAccess(securityAccessRequestToDto(securityAccess)));
@@ -317,8 +323,10 @@ public class EnvironmentApiConverter {
                 .withParentEnvironmentName(environmentDto.getParentEnvironmentName())
                 .withParentEnvironmentCloudPlatform(environmentDto.getParentEnvironmentCloudPlatform());
 
-        NullUtil.doIfNotNull(environmentDto.getNetwork(), network ->
-                builder.withNetwork(networkDtoToResponse(network, environmentDto.getExperimentalFeatures().getTunnel())));
+        NullUtil.doIfNotNull(environmentDto.getProxyConfig(),
+                proxyConfig -> builder.withProxyConfig(proxyConfigToProxyResponseConverter.convert(environmentDto.getProxyConfig())));
+        NullUtil.doIfNotNull(environmentDto.getNetwork(),
+                network -> builder.withNetwork(networkDtoToResponse(network, environmentDto.getExperimentalFeatures().getTunnel())));
         NullUtil.doIfNotNull(environmentDto.getSecurityAccess(), securityAccess -> builder.withSecurityAccess(securityAccessDtoToResponse(securityAccess)));
         return builder.build();
     }
@@ -345,6 +353,8 @@ public class EnvironmentApiConverter {
                 .withAws(getIfNotNull(environmentDto.getParameters(), this::awsEnvParamsToAwsEnvironmentParams))
                 .withParentEnvironmentName(environmentDto.getParentEnvironmentName());
 
+        NullUtil.doIfNotNull(environmentDto.getProxyConfig(),
+                proxyConfig -> builder.withProxyConfig(proxyConfigToProxyResponseConverter.convertToView(environmentDto.getProxyConfig())));
         NullUtil.doIfNotNull(environmentDto.getNetwork(), network ->
                 builder.withNetwork(networkDtoToResponse(network, environmentDto.getExperimentalFeatures().getTunnel())));
         return builder.build();
