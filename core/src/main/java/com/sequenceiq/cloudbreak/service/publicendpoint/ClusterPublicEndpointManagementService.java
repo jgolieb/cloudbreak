@@ -22,25 +22,32 @@ public class ClusterPublicEndpointManagementService {
     @Inject
     private KafkaBrokerPublicDnsEntryService kafkaBrokerPublicDnsEntryService;
 
+    @Inject
+    private NifiHostPublicDnsEntryService nifiHostPublicDnsEntryService;
+
     public boolean provision(Stack stack) {
         boolean certGenerationWasSuccessful = false;
         certGenerationWasSuccessful = gatewayPublicEndpointManagementService.generateCertAndSaveForStackAndUpdateDnsEntry(stack);
         kafkaBrokerPublicDnsEntryService.createOrUpdate(stack);
+        nifiHostPublicDnsEntryService.createOrUpdate(stack);
         return certGenerationWasSuccessful;
     }
 
     public void terminate(Stack stack) {
         gatewayPublicEndpointManagementService.deleteDnsEntry(stack, null);
         kafkaBrokerPublicDnsEntryService.deregister(stack);
+        nifiHostPublicDnsEntryService.deregister(stack);
     }
 
     public Map<String, String> upscale(Stack stack, Map<String, String> newAddressesByFqdn) {
         changeGatewayAddress(stack, newAddressesByFqdn);
-        return kafkaBrokerPublicDnsEntryService.createOrUpdateCandidates(stack, newAddressesByFqdn);
+        kafkaBrokerPublicDnsEntryService.createOrUpdateCandidates(stack, newAddressesByFqdn);
+        return nifiHostPublicDnsEntryService.createOrUpdateCandidates(stack, newAddressesByFqdn);
     }
 
     public Map<String, String> downscale(Stack stack, Map<String, String> downscaledAddressesByFqdn) {
-        return kafkaBrokerPublicDnsEntryService.deregister(stack, downscaledAddressesByFqdn);
+        kafkaBrokerPublicDnsEntryService.deregister(stack, downscaledAddressesByFqdn);
+        return nifiHostPublicDnsEntryService.deregister(stack, downscaledAddressesByFqdn);
     }
 
     public boolean changeGateway(Stack stack, String newGatewayIp) {
@@ -65,6 +72,7 @@ public class ClusterPublicEndpointManagementService {
                 LOGGER.info("Updating DNS entries of a restarted cluster: '{}'", stack.getName());
                 gatewayPublicEndpointManagementService.updateDnsEntry(stack, null);
                 kafkaBrokerPublicDnsEntryService.createOrUpdate(stack);
+                nifiHostPublicDnsEntryService.createOrUpdate(stack);
             } catch (Exception ex) {
                 LOGGER.warn("Failed to update DNS entries of cluster in Public Endpoint Management service:", ex);
             }
