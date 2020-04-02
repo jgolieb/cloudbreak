@@ -68,20 +68,45 @@ public class AzureInstanceConnector implements InstanceConnector {
     public List<CloudVmInstanceStatus> reboot(AuthenticatedContext ac, List<CloudInstance> vms) {
         LOGGER.info("Rebooting vms on Azure: {}", vms.stream().map(CloudInstance::getInstanceId).collect(Collectors.toList()));
         List<CloudVmInstanceStatus> statuses = new ArrayList<>();
-        List<Completable> rebootCompletables = new ArrayList<>();
-        for (CloudInstance vm : vms) {
-            String resourceGroupName = azureUtils.getResourceGroupName(ac.getCloudContext(), vm);
-            AzureClient azureClient = ac.getParameter(AzureClient.class);
-            rebootCompletables.add(azureClient.rebootVirtualMachineAsync(resourceGroupName, vm.getInstanceId())
-                    .doOnError(throwable -> {
-                        LOGGER.error("Error happend on azure instance reboot: {}", vm, throwable);
-                        statuses.add(new CloudVmInstanceStatus(vm, InstanceStatus.FAILED, throwable.getMessage()));
-                    })
-                    .doOnCompleted(() -> statuses.add(new CloudVmInstanceStatus(vm, InstanceStatus.STARTED)))
-                    .subscribeOn(Schedulers.io()));
+        List<Completable> completables = new ArrayList<>();
+        List<CloudVmInstanceStatus> currentStatuses = check(ac, vms);
+        for (CloudVmInstanceStatus vm : currentStatuses) {
+            if (vm.getStatus() == InstanceStatus.STARTED) {
+                doReboot(completables, ac, vm, statuses);
+            } else if (vm.getStatus() == InstanceStatus.STOPPED) {
+                doStart(completables, ac, vm, statuses);
+            } else {
+                LOGGER.error(String.format("Unable to reboot instance %s because of invalid status %s.",
+                        vm.getCloudInstance().getInstanceId(), vm.getStatus().toString()));
+            }
         }
-        Completable.merge(rebootCompletables).await();
+        Completable.merge(completables).await();
         return statuses;
+    }
+
+    private void doReboot(List<Completable> completables, AuthenticatedContext ac, CloudVmInstanceStatus vm, List<CloudVmInstanceStatus> statuses) {
+        AzureClient azureClient = ac.getParameter(AzureClient.class);
+        String resourceGroupName = azureUtils.getResourceGroupName(ac.getCloudContext(), vm.getCloudInstance());
+        completables.add(azureClient.rebootVirtualMachineAsync(resourceGroupName, vm.getCloudInstance().getInstanceId())
+                .doOnError(throwable -> {
+                    LOGGER.error("Error happend on azure instance reboot: {}", vm, throwable);
+                    statuses.add(new CloudVmInstanceStatus(vm.getCloudInstance(), InstanceStatus.FAILED, throwable.getMessage()));
+                })
+                .doOnCompleted(() -> statuses.add(new CloudVmInstanceStatus(vm.getCloudInstance(), InstanceStatus.STARTED)))
+                .subscribeOn(Schedulers.io()));
+    }
+
+    private void doStart(List<Completable> completables, AuthenticatedContext ac, CloudVmInstanceStatus vm, List<CloudVmInstanceStatus> statuses) {
+        AzureClient azureClient = ac.getParameter(AzureClient.class);
+        String resourceGroupName = azureUtils.getResourceGroupName(ac.getCloudContext(), vm.getCloudInstance());
+        completables.add(azureClient.startVirtualMachineAsync(resourceGroupName, vm.getCloudInstance().getInstanceId())
+                .doOnError(throwable -> {
+                    LOGGER.error("Error happend on azure instance start: {}", vm, throwable);
+                    statuses.add(new CloudVmInstanceStatus(vm.getCloudInstance(), InstanceStatus.FAILED, throwable.getMessage()));
+                })
+                .doOnCompleted(() -> statuses.add(new CloudVmInstanceStatus(vm.getCloudInstance(), InstanceStatus.STARTED)))
+                .subscribeOn(Schedulers.io()));
+
     }
 
     @Override
